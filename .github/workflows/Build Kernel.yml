@@ -816,20 +816,46 @@ jobs:
           CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
           EOF
 
-      - name: Enable LRNG v60
+      - name: 启用 LRNG v60
         if: inputs.lrng_enable
         working-directory: kernel_workspace/common
         run: |
-          patch -p1 --forward --no-backup-if-mismatch < ../wildkernels_patches/common/lrng/lrng_v60_android15-6.6.patch
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_RANDOM_DEFAULT_IMPL=n
-          CONFIG_LRNG=y
-          CONFIG_LRNG_COLLECTION_SIZE_1024=y
-          CONFIG_LRNG_HEALTH_TESTS=y
-          CONFIG_LRNG_IRQ=y
-          CONFIG_LRNG_CONTINUOUS_COMPRESSION_ENABLED=y
-          EOF
-          echo "✅ LRNG v60 enabled"
+          echo "Enabling LRNG (Linux Random Number Generator) via v60 backports for v6.6..."
+          
+          # 1. 克隆源码到临时目录
+          git clone --depth=1 https://github.com/smuellerDD/lrng.git /tmp/lrng_src
+          
+          echo "Applying LRNG v60 kernel patches for Linux 6.6..."
+
+          # 第 1 步：应用所有 6 位数字的前置环境补丁
+          for patch_file in $(ls /tmp/lrng_src/backports/v60-6.6.119/*-0000*.patch | sort); do
+            echo "Step 1 - Applying: $(basename "$patch_file")"
+            patch -p1 -F 3 --no-backup-if-mismatch < "$patch_file" || true
+          done
+
+          # 第 2 步：应用 v60 针对 Linux 6.18 的主体补丁
+          for patch_file in $(ls /tmp/lrng_src/kernel_patches/v6.18/*.patch | sort); do
+            echo "Step 2 - Applying: $(basename "$patch_file")"
+            patch -p1 -F 3 --no-backup-if-mismatch < "$patch_file" || true
+          done
+
+          # 第 3 步：应用所有 2 位数字的适配兼容补丁
+          for patch_file in $(ls /tmp/lrng_src/backports/v60-6.6.119/*-[0-9][0-9]-*.patch | sort); do
+            echo "Step 3 - Applying: $(basename "$patch_file")"
+            patch -p1 -F 3 --no-backup-if-mismatch < "$patch_file" || true
+          done
+
+          cd ..
+
+          # 写入相关 GKI 配置
+          echo "CONFIG_LRNG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_SHA256=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_COLLECTION_SIZE=1024" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_HEALTH_TESTS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_RCT_CUTOFF=31" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_APT_CUTOFF=325" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_IRQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LRNG_CONTINUOUS_COMPRESSION_ENABLED=y" >> ./common/arch/arm64/configs/gki_defconfig
 
       - name: Enable Wakelock Blocker
         if: inputs.wakelock_blocker
